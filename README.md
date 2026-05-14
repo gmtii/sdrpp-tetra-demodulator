@@ -1,36 +1,60 @@
-# sdrpp-tetra-demodulator
-
-## Timeslot audio filter
+## New features
+ 
+### Per-timeslot audio filter
  
 TETRA carriers use TDMA with 4 timeslots per channel. By default the
 plugin decodes and plays audio from all timeslots simultaneously. The
 timeslot filter lets you isolate a single timeslot so that only its
 voice traffic is sent to the audio output.
  
-### Usage
+In the OSMO-TETRA decoder panel there are two separate rows:
  
-In the OSMO-TETRA decoder panel you will find two separate rows:
- 
-- **Audio TS** — four checkboxes (TS1-TS4). Tick one to restrict audio
-  output to that timeslot only. Ticking the active checkbox again
-  deselects it and returns to all-timeslot mode.
-- **Timeslots** — the original colour-coded status indicators showing
-  the current content of each slot in real time (UL / DATA / NDB / SYNC
-  / VOICE). These are read-only and update independently of the selector
-  above.
+- **Audio TS** - four checkboxes (TS1-TS4). Tick one to restrict
+  audio output to that timeslot only. Ticking the active checkbox
+  again deselects it and returns to all-timeslot mode.
+- **Timeslots** - colour-coded status indicators showing the current
+  content of each slot in real time (UL / DATA / NDB / SYNC / VOICE).
+  These are read-only and update independently of the selector above.
  
 The selected timeslot is saved in tetra_demodulator_config.json and
 restored on next launch.
  
-### Implementation notes
+#### Implementation notes
  
 The osmo-tetra voice callback (put_voice_data) has been extended with
 an explicit tn argument carrying the TDMA timeslot number (1-4) from
 t_phy_state.time.tn. Filtering is applied inside the callback before
 the PCM data reaches the resampler: if a specific timeslot is selected
 and tn does not match, the callback returns early without writing to
-the output ring buffer. This avoids any interference with the decoder's
-internal timeslot tracking logic.
+the output ring buffer.
+ 
+### Encrypted traffic muting
+ 
+When a cell has air encryption enabled (visible as "Encryption" in the
+panel) and no decryption key is available, the plugin now silently
+discards encrypted voice blocks instead of playing garbled noise.
+ 
+An orange indicator "MUTED: encrypted traffic (no key)" appears in the
+panel whenever this condition is active.
+ 
+If a keystore file is loaded and decrypt_voice_timeslot() succeeds,
+the audio plays normally and the indicator disappears.
+ 
+#### Implementation notes
+ 
+decrypt_voice_timeslot() from tetra_crypto is called in
+tetra_lower_mac.c before put_voice_data whenever air_encryption is
+set on the cell. The result is passed as a voice_encrypted flag to
+the callback. When true, the callback discards the block immediately.
+ 
+### Signal constellation toggle
+ 
+A "Show constellation" checkbox allows hiding the constellation
+diagram. When hidden the constellation sink handler skips the buffer
+copy entirely, saving CPU on slower machines. The state is persisted
+in tetra_demodulator_config.json.
+
+### Original readme.md
 
 --- Orig readme.md
 

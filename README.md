@@ -56,9 +56,7 @@ in tetra_demodulator_config.json.
 
 ### Original readme.md
 
---- Orig readme.md
-
-Tetra demodulator plugin for SDR++
+## Tetra demodulator plugin for SDR++
 
 Designed to fully demodulate and decode TETRA downlink signals
 

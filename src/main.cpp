@@ -65,11 +65,15 @@ public:
             config.conf[name]["hostname"] = "localhost";
             config.conf[name]["port"] = 8355;
             config.conf[name]["sending"] = false;
+            config.conf[name]["selected_ts"] = selected_ts;
         }
         decoder_mode = config.conf[name]["mode"];
         strcpy(hostname, std::string(config.conf[name]["hostname"]).c_str());
         port = config.conf[name]["port"];
         bool startNow = config.conf[name]["sending"];
+        if (config.conf[name].contains("selected_ts")) {
+            selected_ts = config.conf[name]["selected_ts"];
+        }
         config.release(true);
 
         vfo = sigpath::vfoManager.createVFO(name, ImGui::WaterfallVFO::REF_CENTER, 0, VFO_BANDWIDTH, VFO_SAMPLERATE, VFO_BANDWIDTH, VFO_BANDWIDTH, true);
@@ -93,6 +97,7 @@ public:
         demodSink.init(&bitsUnpacker.out, _demodSinkHandler, this);
 
         osmotetradecoder.init(&bitsUnpacker.out);
+        osmotetradecoder.setActiveTimeslot(selected_ts);
         resamp.init(&osmotetradecoder.out, 8000.0, audioSampleRate);
         outconv.init(&resamp.out);
 
@@ -245,31 +250,40 @@ private:
             ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%02d", _this->osmotetradecoder.getCurrMultiframe()); ImGui::SameLine();
             ImGui::Text("| Frame: "); ImGui::SameLine();
             ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "%02d", _this->osmotetradecoder.getCurrFrame());
-            ImGui::Text("Timeslots: ");
-            for(int i = 0; i < 4; i++) {
-                switch(_this->osmotetradecoder.getTimeslotContent(i)) {
-                    case 0:
-                        ImGui::SameLine();
-                        ImGui::TextColored(ImVec4(0.8, 0.8, 0.8, 1.0), "   UL  ");
-                        break;
-                    case 1:
-                        ImGui::SameLine();
-                        ImGui::TextColored(ImVec4(0.95, 0.05, 0.95, 1.0), " DATA  ");
-                        break;
-                    case 2:
-                        ImGui::SameLine();
-                        ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "  NDB  ");
-                        break;
-                    case 3:
-                        ImGui::SameLine();
-                        ImGui::TextColored(ImVec4(0.05, 0.95, 0.95, 1.0), " SYNC  ");
-                        break;
-                    case 4:
-                        ImGui::SameLine();
-                        ImGui::TextColored(ImVec4(0.05, 0.95, 0.05, 1.0), " VOICE ");
-                        break;
+
+            // --- SELECTOR DE TIMESLOT (fijo, independiente del estado) ---
+            ImGui::Text("Audio TS:");
+            ImGui::SameLine();
+            for (int i = 0; i < 4; i++) {
+                int ts_num = i + 1;
+                bool checked = (_this->selected_ts == ts_num);
+                char chk_label[32];
+                snprintf(chk_label, sizeof(chk_label), "TS%d##tschk%d_%s",
+                         ts_num, ts_num, _this->name.c_str());
+                if (i > 0) ImGui::SameLine();
+                if (ImGui::Checkbox(chk_label, &checked)) {
+                    _this->selected_ts = checked ? ts_num : -1;
+                    _this->osmotetradecoder.setActiveTimeslot(_this->selected_ts);
+                    config.acquire();
+                    config.conf[_this->name]["selected_ts"] = _this->selected_ts;
+                    config.release(true);
                 }
             }
+            // --- FIN SELECTOR ---
+
+            // --- ESTADO DE TIMESLOTS (solo informativo, no clicable) ---
+            ImGui::Text("Timeslots:");
+            for(int i = 0; i < 4; i++) {
+                switch(_this->osmotetradecoder.getTimeslotContent(i)) {
+                    case 0: ImGui::SameLine(); ImGui::TextColored(ImVec4(0.8,  0.8,  0.8,  1.0), "   UL  "); break;
+                    case 1: ImGui::SameLine(); ImGui::TextColored(ImVec4(0.95, 0.05, 0.95, 1.0), " DATA  "); break;
+                    case 2: ImGui::SameLine(); ImGui::TextColored(ImVec4(0.95, 0.95, 0.05, 1.0), "  NDB  "); break;
+                    case 3: ImGui::SameLine(); ImGui::TextColored(ImVec4(0.05, 0.95, 0.95, 1.0), " SYNC  "); break;
+                    case 4: ImGui::SameLine(); ImGui::TextColored(ImVec4(0.05, 0.95, 0.05, 1.0), " VOICE "); break;
+                }
+            }
+            // --- FIN ESTADO ---
+
             int crc_failed = _this->osmotetradecoder.getLastCrcFail();
             if(crc_failed) {
                 ImGui::BoxIndicator(ImGui::GetFontSize()*2, IM_COL32(230, 5, 5, 255));
@@ -448,9 +462,8 @@ private:
     SinkManager::Stream stream;
     double audioSampleRate = 48000.0;
 
-
     int decoder_mode = 0;
-
+    int selected_ts = -1;  // -1 = todos, 1-4 = TS1-TS4 (1-based, igual que tn TETRA)
 
     //Sequences from osmo-tetra-sq5bpf source
     /* 9.4.4.3.2 Normal Training Sequence */

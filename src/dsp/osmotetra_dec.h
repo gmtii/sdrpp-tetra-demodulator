@@ -17,7 +17,7 @@ namespace dsp {
         using base_type = Processor<uint8_t, float>;
     public:
         osmotetradec() {}
-        
+
         ~osmotetradec() {
             free(tms->fragslots);
             free(trs);
@@ -28,7 +28,7 @@ namespace dsp {
         }
 
         osmotetradec(stream<uint8_t>* in) { init(in); }
-        
+
         void init(stream<uint8_t>* in) {
             tms = (struct tetra_mac_state*)malloc(sizeof(struct tetra_mac_state));
             memset(tms, 0, sizeof(struct tetra_mac_state));
@@ -57,6 +57,7 @@ namespace dsp {
             base_type::init(in);
         }
 
+        // 0=unlocked, 1=know_next_start, 2=locked
         int getRxState() {
             switch(trs->state) {
                 case RX_S_LOCKED:      return 2;
@@ -69,22 +70,24 @@ namespace dsp {
         int getCurrMultiframe()  { return tms->t_display_st->curr_multiframe; }
         int getCurrFrame()       { return tms->t_display_st->curr_frame; }
 
-        // Filtro de timeslot: -1 = todos, 1-4 = TS concreto (numeracion TETRA 1-based)
+        // Filtro de timeslot: -1 = todos, 1-4 = TS concreto (1-based, igual que tn TETRA)
         void setActiveTimeslot(int ts) { active_ts = ts; }
         int  getActiveTimeslot()       { return active_ts; }
 
-        int  getTimeslotContent(int ts) { return tms->t_display_st->timeslot_content[ts]; }
-        int  getDlUsage()    { return tms->t_display_st->dl_usage; }
-        int  getUlUsage()    { return tms->t_display_st->ul_usage; }
-        char getAccess1Code(){ return tms->t_display_st->access1_code; }
-        char getAccess2Code(){ return tms->t_display_st->access2_code; }
-        int  getAccess1()    { return tms->t_display_st->access1; }
-        int  getAccess2()    { return tms->t_display_st->access2; }
-        int  getDlFreq()     { return tms->t_display_st->dl_freq; }
-        int  getUlFreq()     { return tms->t_display_st->ul_freq; }
-        int  getMcc()        { return tms->t_display_st->mcc; }
-        int  getMnc()        { return tms->t_display_st->mnc; }
-        int  getCc()         { return tms->t_display_st->cc; }
+        int  getTimeslotContent(int ts) { return tms->t_display_st->timeslot_content[ts]; } // 0-other,1-NORM1,2-NORM2,3-SYNC,4-VOICE
+        int  getDlUsage()     { return tms->t_display_st->dl_usage; }
+        int  getUlUsage()     { return tms->t_display_st->ul_usage; }
+        char getAccess1Code() { return tms->t_display_st->access1_code; }
+        char getAccess2Code() { return tms->t_display_st->access2_code; }
+        int  getAccess1()     { return tms->t_display_st->access1; }
+        int  getAccess2()     { return tms->t_display_st->access2; }
+        int  getDlFreq()      { return tms->t_display_st->dl_freq; }
+        int  getUlFreq()      { return tms->t_display_st->ul_freq; }
+        int  getMcc()         { return tms->t_display_st->mcc; }
+        int  getMnc()         { return tms->t_display_st->mnc; }
+        int  getCc()          { return tms->t_display_st->cc; }
+        int  getLA()          { if (!tms || !tms->tcs) return -1; return tms->tcs->la; }
+
         bool getLastCrcFail()        { return tms->t_display_st->last_crc_fail; }
         bool getAdvancedLink()       { return tms->t_display_st->advanced_link; }
         bool getAirEncryption()      { return tms->t_display_st->air_encryption; }
@@ -132,19 +135,22 @@ namespace dsp {
             return outCount;
         }
 
-        // tn viene de t_phy_state.time.tn en tetra_lower_mac.c (valores 1-4)
-        static void put_voice_data(void* ctx, int count, int16_t* data, int tn) {
+        // tn: timeslot number 1-4 (TETRA 1-based, de t_phy_state.time.tn)
+        // voice_encrypted: true si air_encryption=true y decrypt_voice_timeslot fallo (sin clave)
+        static void put_voice_data(void* ctx, int count, int16_t* data, int tn, bool voice_encrypted) {
             osmotetradec* _this = (osmotetradec*) ctx;
 
-            // active_ts -1 = all; 1-4 = solo ese TS (tn usa la misma numeracion 1-based)
-            if (_this->active_ts != -1 && tn != _this->active_ts) {
-                return;  // TS incorrecto: descartar
-            }
+            // Filtro de timeslot: descartar si no es el TS seleccionado
+            if (_this->active_ts != -1 && tn != _this->active_ts)
+                return;
+
+            // Silenciar trafico cifrado sin clave
+            if (voice_encrypted)
+                return;
 
             volk_16i_s32f_convert_32f(_this->conv_data, data, 32768.0f, count);
-            if(_this->out_tmp_buff.getWritable(false) >= count) {
+            if(_this->out_tmp_buff.getWritable(false) >= count)
                 _this->out_tmp_buff.write(_this->conv_data, count);
-            }
         }
 
     private:

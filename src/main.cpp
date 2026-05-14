@@ -66,6 +66,7 @@ public:
             config.conf[name]["port"] = 8355;
             config.conf[name]["sending"] = false;
             config.conf[name]["selected_ts"] = selected_ts;
+            config.conf[name]["show_constellation"] = show_constellation;
         }
         decoder_mode = config.conf[name]["mode"];
         strcpy(hostname, std::string(config.conf[name]["hostname"]).c_str());
@@ -73,6 +74,9 @@ public:
         bool startNow = config.conf[name]["sending"];
         if (config.conf[name].contains("selected_ts")) {
             selected_ts = config.conf[name]["selected_ts"];
+        }
+        if (config.conf[name].contains("show_constellation")) {
+            show_constellation = config.conf[name]["show_constellation"];
         }
         config.release(true);
 
@@ -209,9 +213,22 @@ private:
             style::beginDisabled();
         }
 
-        ImGui::Text("Signal constellation: ");
-        ImGui::SetNextItemWidth(menuWidth);
-        _this->constDiag.draw();
+        {
+            char sc_label[128];
+            snprintf(sc_label, sizeof(sc_label), "Show constellation##sc_%s", _this->name.c_str());
+            if (ImGui::Checkbox(sc_label, &_this->show_constellation)) {
+                config.acquire();
+                config.conf[_this->name]["show_constellation"] = _this->show_constellation;
+                config.release(true);
+            }
+        }
+        if (_this->show_constellation) {
+            ImGui::Text("Signal constellation: ");
+            ImGui::SetNextItemWidth(menuWidth);
+            _this->constDiag.draw();
+        } else {
+            ImGui::TextDisabled("Signal constellation: (disabled)");
+        }
 
         float avg = 1.0f - _this->symbolExtractor.standarderr;
         ImGui::Text("Signal quality: ");
@@ -283,6 +300,13 @@ private:
                 }
             }
             // --- FIN ESTADO ---
+
+            // --- INDICADOR DE MUTING POR CIFRADO ---
+            if (_this->osmotetradecoder.getAirEncryption()) {
+                ImGui::BoxIndicator(ImGui::GetFontSize()*2, IM_COL32(230, 130, 5, 255));
+                ImGui::SameLine();
+                ImGui::TextColored(ImVec4(0.95, 0.55, 0.05, 1.0), " MUTED: encrypted traffic (no key)");
+            }
 
             int crc_failed = _this->osmotetradecoder.getLastCrcFail();
             if(crc_failed) {
@@ -464,6 +488,7 @@ private:
 
     int decoder_mode = 0;
     int selected_ts = -1;  // -1 = todos, 1-4 = TS1-TS4 (1-based, igual que tn TETRA)
+    bool show_constellation = true;
 
     //Sequences from osmo-tetra-sq5bpf source
     /* 9.4.4.3.2 Normal Training Sequence */

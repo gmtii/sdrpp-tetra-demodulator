@@ -367,7 +367,12 @@ void tp_sap_udata_ind(enum tp_sap_data_type type, int blk_num, const uint8_t *bi
 				tms->last_frame = tms->t_display_st->curr_frame;
 			}
 			if(tms->curr_active_timeslot == t_phy_state.time.tn) {
-				tms->put_voice_data(tms->put_voice_data_ctx, 480, synth, t_phy_state.time.tn);
+				bool voice_encrypted = false;
+				if (tms->t_display_st->air_encryption) {
+					bool decrypted = decrypt_voice_timeslot(tms->tcs, &t_phy_state.time, Reordered_array);
+					voice_encrypted = !decrypted;
+				}
+				tms->put_voice_data(tms->put_voice_data_ctx, 480, synth, t_phy_state.time.tn, voice_encrypted);
 			}
 		}
 		break;

@@ -51,13 +51,13 @@ namespace dsp {
             tms->put_voice_data_ctx = this;
             tms->last_frame = 0;
             tms->curr_active_timeslot = 0;
+            tms->voice_encrypted = 0;
 
             Init_Decod_Tetra();
             out_tmp_buff.init(32768);
             base_type::init(in);
         }
 
-        // 0=unlocked, 1=know_next_start, 2=locked
         int getRxState() {
             switch(trs->state) {
                 case RX_S_LOCKED:      return 2;
@@ -70,11 +70,11 @@ namespace dsp {
         int getCurrMultiframe()  { return tms->t_display_st->curr_multiframe; }
         int getCurrFrame()       { return tms->t_display_st->curr_frame; }
 
-        // Filtro de timeslot: -1 = todos, 1-4 = TS concreto (1-based, igual que tn TETRA)
+        // Filtro de timeslot: -1 = todos, 1-4 = TS concreto (1-based como TETRA)
         void setActiveTimeslot(int ts) { active_ts = ts; }
         int  getActiveTimeslot()       { return active_ts; }
 
-        int  getTimeslotContent(int ts) { return tms->t_display_st->timeslot_content[ts]; } // 0-other,1-NORM1,2-NORM2,3-SYNC,4-VOICE
+        int  getTimeslotContent(int ts) { return tms->t_display_st->timeslot_content[ts]; }
         int  getDlUsage()     { return tms->t_display_st->dl_usage; }
         int  getUlUsage()     { return tms->t_display_st->ul_usage; }
         char getAccess1Code() { return tms->t_display_st->access1_code; }
@@ -135,18 +135,21 @@ namespace dsp {
             return outCount;
         }
 
-        // tn: timeslot number 1-4 (TETRA 1-based, de t_phy_state.time.tn)
-        // voice_encrypted: true si air_encryption=true y decrypt_voice_timeslot fallo (sin clave)
-        static void put_voice_data(void* ctx, int count, int16_t* data, int tn, bool voice_encrypted) {
+        // Firma original — compatible ARM y x86
+        // Filtro de TS via curr_active_timeslot
+        static void put_voice_data(void* ctx, int count, int16_t* data) {
             osmotetradec* _this = (osmotetradec*) ctx;
 
-            // Filtro de timeslot: descartar si no es el TS seleccionado
-            if (_this->active_ts != -1 && tn != _this->active_ts)
+            // Filtro de timeslot
+            if (_this->active_ts != -1 &&
+                _this->tms->curr_active_timeslot != _this->active_ts) {
                 return;
+            }
 
             // Silenciar trafico cifrado sin clave
-            if (voice_encrypted)
+            if (_this->tms->voice_encrypted) {
                 return;
+            }
 
             volk_16i_s32f_convert_32f(_this->conv_data, data, 32768.0f, count);
             if(_this->out_tmp_buff.getWritable(false) >= count)

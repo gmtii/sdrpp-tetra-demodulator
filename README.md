@@ -19,40 +19,33 @@ In the OSMO-TETRA decoder panel there are two separate rows:
 The selected timeslot is saved in tetra_demodulator_config.json and
 restored on next launch.
  
-#### Implementation notes
- 
-The osmo-tetra voice callback (put_voice_data) has been extended with
-an explicit tn argument carrying the TDMA timeslot number (1-4) from
-t_phy_state.time.tn. Filtering is applied inside the callback before
-the PCM data reaches the resampler: if a specific timeslot is selected
-and tn does not match, the callback returns early without writing to
-the output ring buffer.
- 
 ### Encrypted traffic muting
  
-When a cell has air encryption enabled (visible as "Encryption" in the
-panel) and no decryption key is available, the plugin now silently
-discards encrypted voice blocks instead of playing garbled noise.
+When a cell has air encryption enabled and no decryption key is
+available, the plugin silently discards encrypted voice blocks instead
+of playing garbled noise. An orange indicator "MUTED: encrypted
+traffic (no key)" appears in the panel when this condition is active.
  
-An orange indicator "MUTED: encrypted traffic (no key)" appears in the
-panel whenever this condition is active.
- 
-If a keystore file is loaded and decrypt_voice_timeslot() succeeds,
-the audio plays normally and the indicator disappears.
- 
-#### Implementation notes
- 
-decrypt_voice_timeslot() from tetra_crypto is called in
-tetra_lower_mac.c before put_voice_data whenever air_encryption is
-set on the cell. The result is passed as a voice_encrypted flag to
-the callback. When true, the callback discards the block immediately.
+If a keystore file is loaded and decryption succeeds, audio plays
+normally and the indicator disappears.
  
 ### Signal constellation toggle
  
 A "Show constellation" checkbox allows hiding the constellation
-diagram. When hidden the constellation sink handler skips the buffer
-copy entirely, saving CPU on slower machines. The state is persisted
-in tetra_demodulator_config.json.
+diagram to save CPU on slower machines such as Raspberry Pi 4.
+When hidden the constellation sink handler skips the buffer copy
+entirely. State is persisted in tetra_demodulator_config.json.
+ 
+### ARM64 portability fix
+ 
+All new fields added to tetra_mac_state are declared as int rather
+than bool. Using bool in a C struct causes different memory padding
+on ARM64 vs x86, which corrupts subsequent struct fields and breaks
+audio output on Raspberry Pi 4. Declaring fields as int guarantees
+consistent 4-byte alignment across all architectures.
+ 
+Tested on x86_64 and ARM64 (Raspberry Pi 4).
+ 
 
 ### Original readme.md
 

@@ -315,10 +315,12 @@ struct tetra_mac_state {
 	struct tetra_display_state *t_display_st;
 	bool codec_first_pass;
 	
-	void (*put_voice_data)(void* ctx, int count, int16_t* data, int tn, bool voice_encrypted);
+	void (*put_voice_data)(void* ctx, int count, int16_t* data);
 	void* put_voice_data_ctx;
 	int last_frame;
 	int curr_active_timeslot;
+	int voice_encrypted;  /* true if current voice block is encrypted and no key available */
+
 	
 	struct fragslot* fragslots;
 };
